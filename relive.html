@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Foot Pressure Training</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      text-align: center;
+    }
+
+    .step1-container, .summary-container {
+      margin: 50px auto;
+      max-width: 400px;
+      text-align: center;
+    }
+
+    input[type="number"] {
+      width: 100%;
+      padding: 10px;
+      font-size: 18px; 
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      margin-bottom: 20px;
+      box-sizing: border-box;
+    }
+
+    button {
+      padding: 10px 20px;
+      font-size: 18px;
+      background-color: #007bff;
+      color: #fff;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background-color: #0056b3;
+    }
+
+    .heatmap {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      margin: 20px;
+    }
+
+    .foot {
+      position: relative;
+      width: 150px;
+      height: 300px;
+      margin: 10px;
+      background: #ddd;
+      border-radius: 20px;
+      overflow: hidden;
+    }
+
+    .heat {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(to top, #f00, #ff0, #0f0, transparent);
+      opacity: 0;
+    }
+
+    .alert {
+      color: red;
+      font-size: 16px;
+      font-weight: bold;
+    }
+
+    .chart-container {
+      max-width: 600px;
+      margin: auto;
+    }
+
+    canvas {
+      width: 100%;
+      height: 300px;
+    }
+  </style>
+</head>
+<body>
+  <!-- Step 1 -->
+  <div id="step1">
+    <div class="step1-container">
+      <h1>กรุณากรอกน้ำหนักตัวของคุณ</h1>
+      <input type="number" id="bodyWeight" placeholder="น้ำหนักตัว (kg)" required>
+      <button onclick="goToHeatmap()">ถัดไป</button>
+    </div>
+  </div>
+
+  <!-- Step 2 -->
+  <div id="step2" style="display: none;">
+    <h1>แรงกดของเท้า</h1>
+    <div class="heatmap">
+      <div class="foot">
+        <h3>เท้าซ้าย</h3>
+        <div id="leftHeat" class="heat"></div>
+      </div>
+      <div class="foot">
+        <h3>เท้าขวา</h3>
+        <div id="rightHeat" class="heat"></div>
+      </div>
+    </div>
+    <h2>น้ำหนักซ้าย: <span id="leftWeight">0</span> kg</h2>
+    <h2>น้ำหนักขวา: <span id="rightWeight">0</span> kg</h2>
+    <p id="alertMessage" class="alert"></p>
+    <button onclick="finishTraining()">ฝึกเสร็จสิ้น</button>
+  </div>
+
+  <!-- Step 3 -->
+  <div id="step3" style="display: none;">
+    <h1>ผลการฝึกเดิน</h1>
+    <div class="summary-container">
+      <p>จำนวนก้าวทั้งหมด: <span id="stepCount">0</span> ครั้ง</p>
+      <p>ลงน้ำหนักเกิน: <span id="overWeightSteps">0</span> ครั้ง</p>
+      <p>ลงน้ำหนักไม่เกิน: <span id="normalWeightSteps">0</span> ครั้ง</p>
+    </div>
+    <div class="chart-container">
+      <canvas id="resultChart"></canvas>
+    </div>
+    <button onclick="restartTraining()">เริ่มใหม่</button>
+  </div>
+
+  <script>
+    let bodyWeight = 0;
+    let stepCount = 0;
+    let overWeightSteps = 0;
+    let normalWeightSteps = 0;
+    let prevLeftWeight = 0;
+    let prevRightWeight = 0;
+
+    function goToHeatmap() {
+      bodyWeight = parseFloat(document.getElementById("bodyWeight").value);
+      if (isNaN(bodyWeight) || bodyWeight <= 0) {
+        alert("กรุณากรอกน้ำหนักตัวให้ถูกต้อง");
+        return;
+      }
+
+      document.getElementById("step1").style.display = "none";
+      document.getElementById("step2").style.display = "block";
+
+      fetchDataAndDisplay();
+      setInterval(fetchDataAndDisplay, 2000);
+    }
+
+    async function fetchDataAndDisplay() {
+      const apiUrl = "https://script.google.com/macros/s/AKfycbwCh3SkrbBg4KBLZLtW9vjuEbz5sUuzOO1ojkMUc2p_G4HQpfWSRMbLvFZJjC8K9fJOqA/exec"; // Replace YOUR_SCRIPT_ID with your Google Apps Script ID
+      try {
+        const response = await fetch(apiUrl);
+        const data = await response.json();
+
+        if (!data.status || !data.data.length) {
+          console.warn("ไม่พบข้อมูลจากเซ็นเซอร์");
+          return;
+        }
+
+        const latest = data.data[data.data.length - 1];
+        const leftWeight = parseFloat(latest.LEFT) || 0;
+        const rightWeight = parseFloat(latest.RIGHT) || 0;
+
+        document.getElementById("leftWeight").textContent = leftWeight.toFixed(2);
+        document.getElementById("rightWeight").textContent = rightWeight.toFixed(2);
+
+        document.getElementById("leftHeat").style.opacity = (leftWeight / bodyWeight).toFixed(2);
+        document.getElementById("rightHeat").style.opacity = (rightWeight / bodyWeight).toFixed(2);
+
+        const alertMessage = document.getElementById("alertMessage");
+        alertMessage.textContent = "";
+
+        if (leftWeight > bodyWeight * 0.6) {
+          overWeightSteps++;
+          alertMessage.textContent += "ระวัง!! คุณลงน้ำหนักเท้าซ้ายเกิน\n";
+        } else if (leftWeight > 0) {
+          normalWeightSteps++;
+        }
+
+        if (rightWeight > bodyWeight * 0.6) {
+          overWeightSteps++;
+          alertMessage.textContent += "ระวัง!! คุณลงน้ำหนักเท้าขวาเกิน";
+        } else if (rightWeight > 0) {
+          normalWeightSteps++;
+        }
+
+        if ((prevLeftWeight === 0 && leftWeight > 0) || (prevRightWeight === 0 && rightWeight > 0)) {
+          stepCount++;
+        }
+        prevLeftWeight = leftWeight;
+        prevRightWeight = rightWeight;
+      } catch (error) {
+        console.error("Error fetching data:", error);
+      }
+    }
+
+    function finishTraining() {
+      document.getElementById("step2").style.display = "none";
+      document.getElementById("step3").style.display = "block";
+
+      document.getElementById("stepCount").textContent = stepCount;
+      document.getElementById("overWeightSteps").textContent = overWeightSteps;
+      document.getElementById("normalWeightSteps").textContent = normalWeightSteps;
+
+      const ctx = document.getElementById("resultChart").getContext("2d");
+      new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: ['ลงน้ำหนักเกิน', 'ลงน้ำหนักไม่เกิน'],
+          datasets: [{
+            label: 'ผลการฝึกเดิน',
+            data: [overWeightSteps, normalWeightSteps],
+            backgroundColor: ['rgba(255, 99, 132, 0.8)', 'rgba(75, 192, 192, 0.8)']
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { display: false },
+            title: { display: true, text: "ผลการฝึกเดิน" }
+          }
+        }
+      });
+    }
+
+    function restartTraining() {
+      location.reload();
+    }
+  </script>
+</body>
+</html>
